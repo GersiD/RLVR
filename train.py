@@ -1,7 +1,7 @@
 '''
 Train a model with GRPO on verifiable coding problems.
 
-Usage: uv run python train.py <run-name> [config]
+Usage: uv run python train.py
 The config (default rlvr.toml) sets the model, problem set, hyperparameters, eval schedule and checkpointing.
 The algorithm itself is in src/rlvr/grpo.py.
 '''
@@ -14,13 +14,15 @@ import torch
 from envs import mbpp
 from rlvr.grpo import train
 from rlvr.llm import HFCausalLM
+import time
 
 ENVS = {"mbpp": mbpp.load_problems}
 
 
-def main(run_name: str, config_path: Path) -> None:
+def main(config_path: Path) -> None:
     conf = tomllib.loads(config_path.read_text())
     model, data, evaluation, checkpoint = conf["model"], conf["data"], conf["eval"], conf["checkpoint"]
+    run_name = f"{model['path'].split('/')[-1]}_{time.strftime('%Y%m%d_%H%M%S')}"
 
     load_problems = ENVS[data["env"]]
     split = {"train_fraction": data["train_fraction"], "seed": data["split_seed"]}
@@ -29,6 +31,7 @@ def main(run_name: str, config_path: Path) -> None:
         device=None if model["device"] == "auto" else model["device"],
         dtype=getattr(torch, model["dtype"]),
     )
+
     train(
         policy,
         load_problems("train", **split),
@@ -46,6 +49,4 @@ def main(run_name: str, config_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (2, 3):
-        sys.exit(__doc__)
-    main(sys.argv[1], Path(sys.argv[2] if len(sys.argv) == 3 else "rlvr.toml"))
+    main(Path(sys.argv[1] if len(sys.argv) == 3 else "rlvr.toml"))
