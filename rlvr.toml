@@ -1,0 +1,36 @@
+# Training run settings, read by train.py (TOML syntax). A copy is saved into each run's directory.
+# Usage: uv run python train.py <run-name> [config]
+
+output_dir = "models/checkpoints"  # each run writes to <output_dir>/<run-name>
+
+[model]
+path = "models/base/qwen2.5-0.5b"  # local directory to start training from
+device = "auto"                    # "auto" picks cuda, then mps, then cpu
+dtype = "float32"                  # keep float32 for training: updates at lr ~1e-6 mostly round away in bf16
+
+[data]
+env = "mbpp"                       # problem set, from src/envs
+train_fraction = 0.8               # the rest is the test set
+split_seed = 42
+
+# Keys here are passed straight to rlvr.grpo.train, so a misspelled key is an error.
+[train]
+steps = 500
+batch_size = 4                     # problems per step
+group_size = 8                     # completions sampled per problem
+micro_batch = 4                    # completions per forward/backward pass; lower it if memory runs out
+max_new_tokens = 512
+lr = 1e-4
+max_grad_norm = 1.0
+seed = 42                          # order problems are sampled in
+
+[eval]
+enabled = true
+every = 50                         # steps between test evaluations; also runs at step 0 and the last step
+batch_size = 16
+max_new_tokens = 512
+
+[checkpoint]
+enabled = false
+every = 100                        # steps between checkpoints; the last step is always saved
+save_optimizer = false             # needed to resume training; adds ~4 GB per checkpoint for the 0.5B model
