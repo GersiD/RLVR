@@ -151,9 +151,9 @@ class HFCausalLM(LLM):
     def device(self) -> torch.device:
         return self.model.device
 
-    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-        '''Return next-token logits, shape (N, L, vocab_size).'''
-        return self.model(input_ids=input_ids, attention_mask=attention_mask).logits
+    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, logits_to_keep: int = 0) -> torch.Tensor:
+        '''Return next-token logits for the last logits_to_keep positions (all if 0), shape (N, K, vocab_size).'''
+        return self.model(input_ids=input_ids, attention_mask=attention_mask, logits_to_keep=logits_to_keep).logits
 
     @torch.no_grad()
     def sample(
@@ -205,29 +205,9 @@ class HFCausalLM(LLM):
         )
 
     def log_probs(self, sequences: torch.Tensor, attention_mask: torch.Tensor, prompt_len: int) -> torch.Tensor:
-        logits = self(sequences, attention_mask)[:, prompt_len - 1:-1]  # logits at t predict token t + 1
+        # logits at t predict token t + 1, so keep positions prompt_len - 1 through L - 2
+        logits = self(sequences, attention_mask, sequences.shape[1] - prompt_len + 1)[:, :-1]
         return logits.log_softmax(-1).gather(-1, sequences[:, prompt_len:, None]).squeeze(-1)
-
-    def send_messages(self, messages: list[dict[str, str]]) -> str:
-        '''
-        Generate the model's reply to a chat conversation, using the chat template. Meant for evaluation.
-
-        Args:
-            messages: Chat history as role/content dicts, e.g. [{"role": "user", "content": "Who are you?"}].
-
-        Returns:
-            The reply text only (up to 256 new tokens), without the prompt or special tokens.
-        '''
-        inputs = self.tokenizer.apply_chat_template(
-            messages,
-            add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt",
-        ).to(self.model.device)
-        outputs = self.model.generate(**inputs, max_new_tokens=256) # pyright: ignore[reportAttributeAccessIssue]
-        new_tokens = outputs[0][inputs["input_ids"].shape[-1]:]
-        return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
 
     def save(self, path: str | Path) -> None:
         '''Write the model and tokenizer to path in Hugging Face format, loadable with HFCausalLM(path).'''
